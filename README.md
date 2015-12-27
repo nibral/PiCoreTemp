@@ -1,0 +1,2 @@
+Raspberry PiのCPU温度をブラウザから確認したかった
+
