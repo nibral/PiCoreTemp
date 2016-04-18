@@ -1,29 +1,62 @@
 'use strict';
 
-var express = require('express');
-var app = express();
-var exec = require('child_process').exec;
+const express = require('express');
+const app = express();
+const exec = require('child_process').exec;
 
-// CPU温度計測コマンド
-const coretempCmd = 'cat /sys/class/thermal/thermal_zone0/temp';
+// for parsing application/x-www-form-urlencoded
+const bodyParser = require('body-parser');
+app.use(bodyParser.urlencoded({
+    extended: true
+}));
 
-app.get('/', (req, res) => {
-  let child = exec(coretempCmd, (err, stdout, stderr) => {
-    // 小数点以下1桁で四捨五入する
-    let temp = stdout / 100;
-    temp = Math.round(temp);
-    temp /= 10;
-    
-    // JSONで返事
-    res.json({ temp: temp });
-  });
+app.all('/', (req, res) => {
+    // ignore neither GET nor POST
+    const method = req.method;
+    if (method !== 'GET' && method !== 'POST') {
+        res.status(405).end();
+        return;
+    }
+
+    // get cpu temperature
+    const coretempCmd = 'cat /sys/class/thermal/thermal_zone0/temp';
+    exec(coretempCmd, (err, stdout) => {
+        if (err) {
+            res.send(err);
+        }
+
+        // round 1 digit after the decimal point
+        let temp = stdout / 100;
+        temp = Math.round(temp);
+        temp /= 10;
+
+        // response simply JSON in GET method
+        if (method === 'GET') {
+            res.json({
+                temp: temp
+            }).end();
+            return;
+        }
+
+        // response to slack
+        const SLACK_HOOK_USERNAME = 'pi-core-temp';
+        const username = req.body.user_name;
+        if (username !== SLACK_HOOK_USERNAME) {
+            res.json({
+                text: '@' + username + ' ' + temp + '℃',
+                link_names: 1   // eslint-disable-line
+            });
+        } else {
+            res.send('');
+        }
+    });
 });
 
-// 特に指定がなければ3000番ポートで待ち受け
-var server = app.listen(process.env.PORT || 3000, () => {
-  let host = server.address().address;
-  let port = server.address().port;
+// start server (default port is 3000)
+const server = app.listen(process.env.PORT || 3000, () => {
+    const host = server.address().address;
+    const port = server.address().port;
 
-  console.log('listening at http://%s:%s', host, port);
+    console.log('listening at http://%s:%s', host, port);
 });
 
